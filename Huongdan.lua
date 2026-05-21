@@ -1,15 +1,17 @@
 --// 🌈 QUAY NGƯỢC THỜI GIAN : TUA
---// Delta Executor Roblox
+--// Delta Executor Roblox (Fixed Drag & Optimized)
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local plr = Players.LocalPlayer
 
 -- GUI
 local gui = Instance.new("ScreenGui")
 gui.Name = "TimeReverseGUI"
-gui.Parent = game.CoreGui
+-- Sử dụng CoreGui cho Executor, nếu lỗi tự động chuyển sang PlayerGui
+gui.Parent = game:GetService("CoreGui") or plr:WaitForChild("PlayerGui")
 
 -- MAIN FRAME
 local main = Instance.new("Frame")
@@ -28,11 +30,11 @@ local stroke = Instance.new("UIStroke")
 stroke.Thickness = 4
 stroke.Parent = main
 
-spawn(function()
+task.spawn(function()
 	while true do
-		for i = 0,1,0.01 do
-			stroke.Color = Color3.fromHSV(i,1,1)
-			task.wait()
+		for i = 0, 1, 0.01 do
+			stroke.Color = Color3.fromHSV(i, 1, 1)
+			task.wait(0.02)
 		end
 	end
 end)
@@ -80,24 +82,21 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0,20)
 btnCorner.Parent = btn
 
--- DRAG GUI
-local dragging = false
-local dragInput
-local dragStart
-local startPos
+-- ==========================================
+-- SỬA LẠI HỆ THỐNG DI CHUYỂN GUI MƯỢT MÀ (DRAG)
+-- ==========================================
+local dragging, dragInput, dragStart, startPos
 
 local function update(input)
 	local delta = input.Position - dragStart
-	main.Position = UDim2.new(
-		startPos.X.Scale,
-		startPos.X.Offset + delta.X,
-		startPos.Y.Scale,
-		startPos.Y.Offset + delta.Y
-	)
+	-- Sử dụng Tween để di chuyển GUI mượt hơn, không bị khựng
+	TweenService:Create(main, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	}):Play()
 end
 
 main.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPos = main.Position
@@ -106,6 +105,92 @@ main.InputBegan:Connect(function(input)
 			if input.UserInputState == Enum.UserInputState.End then
 				dragging = false
 			end
+		end)
+	end
+end)
+
+main.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UIS.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		update(input)
+	end
+end)
+-- ==========================================
+
+-- MINIMIZE
+local minimized = false
+
+mini.MouseButton1Click:Connect(function()
+	minimized = not minimized
+
+	if minimized then
+		btn.Visible = false
+		main.Size = UDim2.new(0,300,0,50)
+		mini.Text = "+"
+	else
+		btn.Visible = true
+		main.Size = UDim2.new(0,300,0,110)
+		mini.Text = "-"
+	end
+end)
+
+-- SAVE POSITIONS
+local positions = {}
+local rewinding = false
+
+task.spawn(function()
+	while true do
+		task.wait(0.15)
+		if not rewinding then -- Không lưu vị trí khi đang tua ngược
+			local char = plr.Character
+			if char and char:FindFirstChild("HumanoidRootPart") then
+				table.insert(positions, 1, char.HumanoidRootPart.CFrame)
+
+				if #positions > 300 then
+					table.remove(positions, #positions)
+				end
+			end
+		end
+	end
+end)
+
+-- REWIND
+local function reverseTime()
+	rewinding = true
+	btn.Text = "DỪNG"
+
+	while rewinding do
+		local char = plr.Character
+
+		if char and char:FindFirstChild("HumanoidRootPart") then
+			if #positions > 0 then
+				char.HumanoidRootPart.CFrame = positions[1]
+				table.remove(positions, 1)
+			else
+				-- Hết vị trí để tua thì tự dừng
+				rewinding = false
+				btn.Text = "TUA"
+				break
+			end
+		end
+
+		task.wait(0.05)
+	end
+end
+
+btn.MouseButton1Click:Connect(function()
+	if rewinding then
+		rewinding = false
+		btn.Text = "TUA"
+	else
+		reverseTime()
+	end
+end)
 		end)
 	end
 end)
